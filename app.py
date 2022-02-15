@@ -10,7 +10,7 @@ db = SQLAlchemy(app)
 
 @app.route('/')
 def index():
-	return '<h2>welcome to flask journey</h2>'
+	return '<h2>Hey! WELCOME</h2> <br> this is API for your librabry'
 
 
 
