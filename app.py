@@ -1,191 +1,387 @@
-from flask import Flask,render_template,jsonify,request
+import os
 from flask_sqlalchemy import SQLAlchemy
 import json
-import os
 
-app = Flask(__name__)
-#app.config['SQLALCHEMY_DATABASE_URI'] ='postgresql://postgres:root@localhost:5432/api'
+from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
+from flask_sqlalchemy import SQLAlchemy  # importer SQLAlchemy
+import urllib.parse
+from urllib.parse import quote_plus
+
+
+app = Flask(__name__)  
+
+#app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:{}@localhost:5432/my_api".format('root')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://hjxmhzdcobywnv:4eea5de9b9f5c0a384d3e82e5bb0e65d06f9e630082cbb8f12c828b3d65d9573@ec2-52-73-149-159.compute-1.amazonaws.com:5432/d1f54elmspndr0'
-db = SQLAlchemy(app)
+# connexion à la base de données
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)  # Créer une instance de BD
+
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Headers',
+                         'Content-Type,Authorization,true')
+    response.headers.add('Access-Control-Allow-Methods',
+                         'GET,PUT,POST,DELETE,OPTIONS')
+    return response
+
+
+########### Categorie
+class Categorie(db.Model):
+    __tablename__ = 'categories'
+    id=db.Column(db.Integer, primary_key=True,autoincrement=True)
+    libelle_categorie=db.Column(db.String(30),nullable=False)
+    livres=db.relationship('Livre',backref='categories', lazy=True)
+    def __init__(self, libelle_categorie):
+        #self.id = id
+        self.libelle_categorie = libelle_categorie
+       
+
+    def insert(self):
+        db.session.add(self)
+        db.session.commit()
+
+    def update(self):
+        db.session.commit()
+
+    def delete(self):
+        db.session.delete(self)
+        db.session.commit()
+
+    def format(self):
+        return {
+            'id': self.id,
+            'libelle_categorie': self.libelle_categorie
+
+        }
+
+db.create_all()
+
+
+########### Categorie
+
+class Livre(db.Model):
+    __tablename__ = 'livres'
+    id=db.Column(db.Integer, primary_key=True,autoincrement=True)
+    isbn=db.Column(db.String,nullable=False )
+    titre=db.Column(db.String(30),nullable=False)
+    date_publication=db.Column(db.Date,nullable=False)
+    auteur=db.Column(db.String(100),nullable=False)
+    editeur=db.Column(db.String(100),nullable=True)
+    categorie_id=db.Column(db.Integer,db.ForeignKey('categories.id'),nullable=False)
+
+    def __init__(self, isbn,titre,date_publication,auteur,editeur,categorie_id):
+        #self.id = id
+        self.isbn = isbn
+        self.titre = titre
+        self.date_publication = date_publication
+        self.auteur = auteur
+        self.editeur = editeur
+        self.categorie_id = categorie_id
+
+    def insert(self):
+        db.session.add(self)
+        db.session.commit()
+
+    def update(self):
+        db.session.commit()
+
+    def delete(self):
+        db.session.delete(self)
+        db.session.commit()
+
+    def format(self):
+        return {
+            'id': self.id,
+            'isbn': self.isbn,
+            'titre': self.titre,
+            'date_publication': self.date_publication,
+            'auteur': self.auteur,
+            'titre': self.categorie_id,
+        }
+
+
+db.create_all()
+
+
+#############
+############# ROUTES
+#############
 
 @app.route('/')
 def index():
-	return '<h2>welcome to flask journey</h2>'
+	return '<h2>Hey! WELCOME</h2> <br> this is API for your librabry'
+
+#################################################
+#           Liste des livres \catégories
+####################################################
 
 
+@app.route('/livres')
+def get_all_book():
+    livre = Livre.query.all()
+    livre = [p.format() for p in livre]
+    return jsonify(
+        {
+            'success': True,
+            'livre': livre,
+            'nombre': len(Livre.query.all())}
+    )
+########### Categorie
+@app.route('/categories')
+def get_all_categorie():
+    categorie = Categorie.query.all()
+    categorie = [p.format() for p in categorie]
+    return jsonify(
+        {
+            'success': True,
+            'categorie': categorie,
+            'nombre': len(Categorie.query.all())}
+    )
 
-@app.route('/livres/',methods=["GET"])
-def get_books():
-	d = {}
-	l = list()
-	x = 0
-	query = Livre.query.all()
-	for livre in query:
-		
-		l.append({'id':livre.id,'code':livre.code,'titre':livre.titre,'datePublication':livre.datePublication,'categorie_id':livre.categorie_id,'nomAuteur':livre.nomAuteur,'nomEditeur':livre.nomEditeur})
-		x = x + 1
-	d["succes"] = "OK"
-	d["livres"] = l
-	return d
-@app.route('/categories/',methods=["GET"])
-def get_categories():
-	d = {}
-	l = list()
-	x = 0
-	query = Categorie.query.all()
-	for c in query:
-		l.append({'id':c.id,'libelle':c.libelle})
-	d["succes"] = "OK"
-	d["categories"] = l
-	return d
-	
 
+#################################################
+#           selectioner un livre \ catégorie
+####################################################
 
 @app.route('/livre/<int:id>')
 def get_livre(id):
 	livre = Livre.query.all()
 	for i in livre:
 		if i.id == id:
-			return({"livre":{"id":i.id,"code":i.code,"titre":i.titre,"datePublication":i.datePublication,"categorie_id":i.categorie_id,"nomAuteur":i.nomAuteur,"nomEditeur":i.nomEditeur},"message":"Found","succes":"OK"})
+			return({"livre":{"id":i.id,
+                    "code":i.isbn,
+                    "titre":i.titre,
+                    "datePublication":i.date_publication,
+                    "categorie_id":i.categorie_id,
+                    "nomAuteur":i.auteur,
+                    "nomEditeur":i.editeur},"message":"Found","succes":"OK"})
 	
 	return ({"message":"Not Found","succes":" NOT OK"})
 
-
-@app.route('/livre/<int:id>',methods=["DELETE"])
-def delete_livre(id):
-	try:
-		i = Livre.query.filter_by(id=id)
-		i_ = i[0]
-		i.delete()
-		db.session.commit()
-		return ({"livre":{"id":i_.id,"code":i_.code,"titre":i_.titre,"datePublication":i_.datePublication,"categorie_id":i_.categorie_id,"nomAuteur":i_.nomAuteur,"nomEditeur":i_.nomEditeur},"success":"OK","deleted":"True"})
-	except Exception as e:
-		print(e)
-		pass
-	return ({"message":"l'id n'existe pas","succes":"NOT OK","deleted":"False"})
-
-
-@app.route('/livreUpdate/',methods=["PUT"])
-def update_livre():
-	try:
-		b_d = json.loads(request.data.decode())
-		c = Livre.query.filter_by(id = b_d["id"])
-		if c == None or c.count() == 0:
-			return ({"success":"False","Erreur":"l'id du livre n'existe pas"})
-
-		for key in b_d:
-			Livre.query.filter_by(id=b_d['id']).update({key:b_d[key]})
-		db.session.commit()
-		return ({"success":"OK","Message":"Livre Mise a Jour"})
-	except:
-		return ({"message":"une erreur est survenus"})
-	
-
-
-
+        
+########### categorie
 
 @app.route('/categorie/<int:id>')
 def get_categorie(id):
 	categorie = Categorie.query.all()
 	for c in categorie:
 		if c.id == id:
-			return({"succes":"OK","categorie":{"id":c.id,"libelle":c.libelle}})
+			return({"succes":"OK",
+           "categorie":{"id":c.id,"libelle":c.libelle_categorie}})
 	return ({"message":"Not Found","succes":" NOT OK"})
 
 
-@app.route('/categorie/<int:id>',methods=["DELETE"])
-def delete_categorie(id):
-	try:
-		c = Categorie.query.filter_by(id=id)
-		c_ = c[0]
-		c.delete()
-		db.session.commit()
-		return ({"Categorie":{"id":c_.id,"libelle":c_.libelle},"deleted":"True","success":" OK"})
-	except Exception as ex:
-		print(ex)
-		return ({"deleted":"False","success":"NOT OK"})
-		
-@app.route('/categorieUpdate/',methods=["PUT"])
-def update_categorie():
-	b_d = json.loads(request.data.decode())
-	c = Categorie.query.filter_by(id = b_d["id"])
-	if c == None or c.count() == 0:
-		return ({"success":"False","Erreur":"l'id n'existe pas"})
-	for key in b_d:
-		Categorie.query.filter_by(id=b_d['id']).update({key:b_d[key]})
-	db.session.commit()
-	return ({"success":"True","Message":"Categorie Mise a Jour"})
-	
+#################################################
+#           Ajouter un livre \ catégorie
+####################################################
 
 
-	
+@app.route('/livres', methods=['POST'])
+def add_livre():
+    body = request.get_json()
+    
+    new_isbn = body.get('isbn', None)
+    new_titre = body.get('titre', None)
+    new_date_publication = body.get('date_publication', None)
+    new_auteur = body.get('auteur', None)
+    new_editeur = body.get('editeur', None)
+    new_categorie_id = body.get('categorie_id', None)
+    livre = Livre(isbn=new_isbn, titre=new_titre, date_publication=new_date_publication, auteur=new_auteur, editeur=new_editeur, categorie_id=new_categorie_id)
+    livre.insert()
+    livres = Livre.query.all()
+    livres_formatted = [p.format() for p in livres]
+    return jsonify({
+        'success': True,
+        'created': livre.id,
+        'livres': livres_formatted,
+        'total_livres': len(Livre.query.all())
+    })
+    
+
+########## Categorie
 
 
-@app.route('/categorie/<int:id>/livres/')
-def get_categorie_livre(id):
-	d = {}
-	li = list()
-	#categorie = Categorie.query.all()
-	livre = Livre.query.all()
-	for i in livre:
-		if id == i.categorie_id:
-			li.append({"id":i.id,"code":i.code,"titre":i.titre,"datePublication":i.datePublication,"categorie_id":i.categorie_id,"nomAuteur":i.nomAuteur,"nomEditeur":i.nomEditeur})
-	d["categorie"] = id
-	d["livres"] = li
-	d["success"] = "OK"
-	return d
-	#return ({"message":"Not Found"})
+@app.route('/categories', methods=['POST'])
+def add_categorie():
+    body = request.get_json()
+    new_libelle_categorie = body.get('libelle_categorie', None)
+    new_id = body.get('id', None)
+    categorie = Categorie(libelle_categorie=new_libelle_categorie)
+    categorie.insert()
+    categories = Categorie.query.all()
+    categories_formatted = [p.format() for p in categories]
+    return jsonify({
+        'success': True,
+        'created': categorie.id,
+        'categories': categories_formatted,
+        'total_categories': len(Categorie.query.all())
+    })
+
+############################################################
+#
+#    Endpoint LISTE DES LIVRES D'UNE CATEGORIE
+#
+############################################################
+@app.route('/categories/<int:id>/livres' , methods=['GET'])
+def get_books_with_cat_id(id):
+    cat=Categorie.query.get(id)
+    if cat is None:
+        abort(404)
+    else:
+        livres=Livre.query.filter(Livre.categorie_id==id).all()
+        formated_books=[ bk.format() for bk in livres]
+        return jsonify({
+            'success':True,
+            'id_categorie':id,
+            'libelle_categorie':cat.libelle_categorie,
+            'total':len(livres),
+            "livres":formated_books   
+        })
 
 
 
-@app.route('/ajouter/livre/',methods=["POST"])
-def ajouter_livre():
-	try:
-		
-		book_data = json.loads(request.data.decode())
-		livrex = Livre(code=book_data['ISBN'],titre=book_data['titre'],datePublication=book_data['datePublication'],categorie_id=book_data['categorie_id'],nomAuteur=book_data['nomAuteur'],nomEditeur=book_data['nomEditeur'])
-	
-		db.session.add(livrex)
-		db.session.commit()
-		return {"message":"livre ajouter"}
-	except:
-		return {"message":"livre non ajouter"}
-	
-@app.route('/ajouter/categorie',methods=["POST"])
-def ajouter_categorie():
-	try:
-		categorie_data = json.loads(request.data.decode())
-		categorie = Categorie(id=categorie_data["id"],libelle=categorie_data["libelle"])
-		db.session.add(categorie)
-		db.session.commit()
-		return {"message":"categorie ajouter"}
-	except:
-		return {"message":"categorie non ajouter"}
-	
-
-class Categorie(db.Model):
-	__tablename__ = 'categories'
-	id = db.Column(db.Integer,primary_key=True)
-	libelle = db.Column(db.String,nullable=False)
-	livre = db.relationship("Livre",backref="categories",lazy=True)
-
-#db.create_all()
-
-class Livre(db.Model):
-	__tablename__ = 'livres'
-	id = db.Column(db.Integer,primary_key=True,autoincrement=True)
-	code = db.Column(db.String,nullable=False)
-	titre = db.Column(db.String,nullable=False)
-	datePublication = db.Column(db.Date,nullable=False)
-	categorie_id = db.Column(db.Integer,db.ForeignKey('categories.id'),nullable=False)
-	nomAuteur = db.Column(db.String,nullable=False)
-	nomEditeur = db.Column(db.String,nullable=False)
 
 
-db.create_all()
 
-#port = int(os.environ.get("PORT", 5000))
-#app.run(host="0.0.0.0", port=port)
-# s Livre(db.Model):
-if __name__ == "__main__":
-	app.run()
+#################################################
+#           Modifier un livre \ catégorie
+####################################################
+
+
+@app.route('/livres/<int:livre_id>', methods=['PATCH'])
+def update_livre(livre_id):
+    body = request.get_json()
+    try:
+        mon_livre = Livre.query.filter(Livre.id == livre_id).one_or_none()
+        if mon_livre is None:
+            abort(404)
+        if 'isbn' in body and 'titre' in body and  'date_publication' in body and 'auteur' in body and  'editeur' in body and 'categorie_id' in body:
+            mon_livre.isbn = body.get('isbn')
+            mon_livre.titre = body.get('titre')
+            mon_livre.date_publication = body.get('date_publication')
+            mon_livre.auteur = body.get('auteur')
+            mon_livre.editeur = body.get('editeur')
+            mon_livre.categorie_id = body.get('categorie_id')
+        mon_livre.update()
+        return jsonify({
+            'success': True,
+            'id': mon_livre.id,
+            'livre_modifie': mon_livre.format()
+        })
+    except:
+        abort(400)
+        
+########### Categorie
+
+@app.route('/categories/<int:categorie_id>', methods=['PATCH'])
+def update_categorie(categorie_id):
+    body = request.get_json()
+    try:
+        ma_categorie = Categorie.query.filter(Categorie.id == categorie_id).one_or_none()
+        if ma_categorie is None:
+            abort(404)
+        if 'libelle_categorie' in body:
+            ma_categorie.libelle_categorie = body.get('libelle_categorie')
+       
+        ma_categorie.update()
+        return jsonify({
+            'success': True,
+            'id': ma_categorie.id,
+            'livre_modifie': ma_categorie.format()
+        })
+    except:
+        abort(400)
+
+
+#################################################
+#           Supprimer un livre \ catégorie
+#################################################
+@app.route('/livres/<int:livre_id>', methods=['DELETE'])
+def supprimer_livre(livre_id):
+    try:
+        mon_livre = Livre.query.get(livre_id)
+        if mon_livre is None:
+            abort(404)
+        else:
+            mon_livre.delete()
+            return jsonify({
+                "success": True,
+                "deleted_id": livre_id,
+                "total_livres": len(Livre.query.all())
+            })
+    except:
+        abort(400)
+    finally:
+        db.session.close()
+        
+########### Categorie
+      
+@app.route('/categories/<int:categorie_id>', methods=['DELETE'])
+def supprimer_categorie(categorie_id):
+    try:
+        ma_categorie = Categorie.query.get(categorie_id)
+        if ma_categorie is None:
+            abort(404)
+        else:
+            ma_categorie.delete()
+            return jsonify({
+                "success": True,
+                "deleted_id": ma_categorie,
+                "total_categorie": len(Categorie.query.all())
+            })
+    except:
+        abort(400)
+    finally:
+        db.session.close()
+        
+        
+#################################################
+#           Liste des livres d'une catégories
+####################################################
+@app.route('/categories/<int:id>/livres')
+def book_categorie(id):
+    try:
+        categorie = Categorie.query.get(id)
+        livres = Livre.query.filter_by(categorie_id=id).all()
+        livres = [p.format() for p in livres]
+        return jsonify(
+            {
+                'success': True,
+                'nombre':len(livres),
+                'statut_code': 200,
+            }
+        )
+    except :
+        abort(404)
+    finally:
+        db.session.close()
+
+#ici on fait un get et la ressource 
+#n'existe pas http://localhost:5000/persons/200
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        "success": False, 
+        "error": 404,
+        "message": "Not found"
+        }), 404
+    
+@app.errorhandler(500)
+def server_error(error):
+    return jsonify({
+        "success": False, 
+        "error": 500,
+        "message": "Internal server error"
+        }), 500
+    
+@app.errorhandler(400)
+def bad_request(error):
+    return jsonify({
+        "success": False, 
+        "error": 400,
+        "message": "Bad Request"
+        }), 400
+
+app.run()
